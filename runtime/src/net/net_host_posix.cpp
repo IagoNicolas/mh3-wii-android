@@ -549,12 +549,14 @@ Interface DefaultInterface() {
     inet_pton(AF_INET, "10.0.1.1", &result.gateway);
     inet_pton(AF_INET, "8.8.8.8", &result.dns);
 
+#ifndef __ANDROID__ // bionic has no _res; the 8.8.8.8 default stands
     if (res_init() == 0)
         for (int i = 0; i < _res.nscount; ++i)
             if (_res.nsaddr_list[i].sin_family == AF_INET) {
                 result.dns = _res.nsaddr_list[i].sin_addr.s_addr;
                 break;
             }
+#endif
 
     // The address the host would use to reach the Internet; no packet is sent.
     const int probe = ::socket(AF_INET, SOCK_DGRAM, 0);

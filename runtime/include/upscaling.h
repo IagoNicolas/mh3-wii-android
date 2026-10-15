@@ -8,3 +8,9 @@
 // MH3_RENDER_SCALE overrides it.
 bool UpscalingSetting();
 void SetUpscalingSetting(bool upscaling);
+
+// A fixed render scale, n times the Wii's 448 rows (1: native, 2: 896 rows),
+// instead of the display-sized target; 0, the default, leaves it to the
+// upscaling setting. The development MH3_RENDER_SCALE still overrides it.
+float RenderScaleSetting();
+void SetRenderScaleSetting(float scale);

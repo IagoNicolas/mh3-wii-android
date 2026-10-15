@@ -12,6 +12,9 @@
 #include <sys/mman.h>
 #include <ucontext.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <sys/syscall.h>
+#endif
 
 #include <cerrno>
 #include <cstdio>
@@ -21,6 +24,16 @@
 
 namespace GuestFlat {
 namespace {
+
+// bionic declares memfd_create only from API 30; the syscall is in every
+// kernel Android 8+ ships.
+int CreateMemoryFd() {
+#ifdef __ANDROID__
+    return int(syscall(__NR_memfd_create, "mh3-guest-memory", 1u /* MFD_CLOEXEC */));
+#else
+    return memfd_create("mh3-guest-memory", MFD_CLOEXEC);
+#endif
+}
 
 constexpr uint32_t kMem1Size = 24u << 20;
 constexpr uint32_t kMem2Size = 64u << 20;
@@ -198,7 +211,7 @@ void Initialize() {
     }
 
     // A fresh object each time, so a re-initialization starts from zeroed memory.
-    const int fd = memfd_create("mh3-guest-memory", MFD_CLOEXEC);
+    const int fd = CreateMemoryFd();
 
     if (fd < 0)
         MH3_THROW(std::runtime_error(std::string("memfd_create failed: ") + std::strerror(errno)));

@@ -51,12 +51,13 @@ if(MH3_PROFILE_FRAME_POINTERS)
   endif()
 endif()
 
-# Supported targets: arm32/arm64 Linux with GLES, and Vita with native GXM.
+# Supported targets: arm32/arm64 Linux with GLES, arm64 Android (NDK, GLES via
+# SDL3), and Vita with native GXM.
 # MH3_ALLOW_UNSUPPORTED_HOST keeps other hosts
 # configurable for development only; they are not a supported product.
 option(MH3_ALLOW_UNSUPPORTED_HOST "Configure on a host other than arm32/arm64 Linux" OFF)
 
-if(NOT VITA AND NOT EMSCRIPTEN AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64|armv7l|armv7|armv8l|arm)$"))
+if(NOT VITA AND NOT EMSCRIPTEN AND NOT ANDROID AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64|armv7l|armv7|armv8l|arm)$"))
   if(NOT MH3_ALLOW_UNSUPPORTED_HOST)
     message(FATAL_ERROR "MH3 targets arm32/arm64 Linux; this is ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}. "
       "Cross-compile with cmake/toolchains/linux-arm32.cmake or linux-arm64.cmake, or set MH3_ALLOW_UNSUPPORTED_HOST=ON.")
@@ -179,6 +180,16 @@ elseif(MH3_PGO_USE)
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fprofile-instr-use=${MH3_PGO_USE};-Wno-profile-instr-unprofiled;-Wno-profile-instr-out-of-date;-Wno-profile-instr-missing>")
 endif()
 
+if(ANDROID)
+  # MH3 is a shared library (libmain.so) that SDLActivity loads, and so is
+  # everything it links statically.
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+  if(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "The Android build supports arm64-v8a only, not ${CMAKE_ANDROID_ARCH_ABI}")
+  endif()
+endif()
+
 if(MH3_AURORA_ROOT)
   enable_language(C)
 
@@ -269,7 +280,18 @@ else()
   set(MH3_GUEST_MEMORY_SOURCE src/guest_flat_memory.cpp)
 endif()
 
-add_executable(MH3
+# Android loads the game as libmain.so from SDLActivity, which calls the
+# SDL_main that <SDL3/SDL_main.h> renames main to.
+function(mh3_add_game target)
+  if(ANDROID)
+    add_library(${target} SHARED ${ARGN})
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME main)
+  else()
+    add_executable(${target} ${ARGN})
+  endif()
+endfunction()
+
+mh3_add_game(MH3
   src/main.cpp src/memory.cpp ${MH3_GUEST_MEMORY_SOURCE} src/os_boot.cpp src/os_sleep.cpp src/os_alarm.cpp src/os_devices.cpp src/abi_bridge.cpp
   src/ppc_helpers.cpp src/fpu_helpers.cpp src/executable_guard.cpp src/rso_services.cpp src/wpad_services.cpp src/controller_host.cpp native/mh3_classic_map.c src/controller_tests.cpp src/village_boot.cpp src/audio_interface.cpp
   src/audio_tests.cpp src/audio_dma.cpp
@@ -334,8 +356,18 @@ target_include_directories(MH3 PRIVATE include ..)
 # glibc's backtrace_symbols only names functions in the dynamic symbol table,
 # so export ours for symbolized backtraces of fatal errors (and dladdr).
 if(NOT VITA AND NOT EMSCRIPTEN)
-  set_target_properties(MH3 PROPERTIES ENABLE_EXPORTS ON)
+  if(NOT ANDROID)
+    set_target_properties(MH3 PROPERTIES ENABLE_EXPORTS ON)
+  endif()
+
   target_link_libraries(MH3 PRIVATE ${CMAKE_DL_LIBS})
+
+  if(ANDROID)
+    # No OpenSSL in the NDK: online play's TLS is unavailable until one is
+    # supplied (find_package(OpenSSL) below picks it up from CMAKE_PREFIX_PATH).
+    target_link_libraries(MH3 PRIVATE log android)
+    target_sources(MH3 PRIVATE src/android_settings.cpp)
+  endif()
 
   # TLS for online play (the Capcom server's SSL); without OpenSSL the game's
   # SSL sessions fail.

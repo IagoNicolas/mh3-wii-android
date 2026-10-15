@@ -1504,6 +1504,41 @@ uint32_t NativeRenderPacketSlot() {
     return drawingSlot;
 }
 
+namespace {
+std::atomic<uint32_t> fpsLimit{0};
+
+// Holds the game thread to the cap: each frame starts a period after the one
+// before, and a late frame resets the schedule rather than bursting to catch up.
+void CapFrameRate() {
+#ifndef __vita__
+    static std::chrono::steady_clock::time_point next;
+    const uint32_t hertz = fpsLimit.load(std::memory_order_relaxed);
+
+    if (hertz == 0) {
+        next = {};
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+
+    if (next > now)
+        std::this_thread::sleep_until(next);
+    else
+        next = now;
+
+    next += std::chrono::nanoseconds(1'000'000'000ull / hertz);
+#endif
+}
+} // namespace
+
+uint32_t FpsLimitSetting() {
+    return fpsLimit.load(std::memory_order_relaxed);
+}
+
+void SetFpsLimitSetting(uint32_t hertz) {
+    fpsLimit.store(hertz, std::memory_order_relaxed);
+}
+
 bool FrameLimitSetting() {
     return frameLimit;
 }
@@ -1750,6 +1785,10 @@ void PaceNativeFramePacket() {
     // 60 Hz and 8.7 s at 240 Hz, but 48.8 s (32,532 frames) unbounded, where
     // the frames took the CPU from the loading.
     const bool loading = std::exchange(loadingFrame, false), unpaced = !paced || loading;
+
+    if (!loading)
+        CapFrameRate();
+
     limitedFrame = !unpaced;
 
     if (loading) {

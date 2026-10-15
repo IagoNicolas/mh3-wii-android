@@ -109,6 +109,7 @@ bool efbDirty = false;
 uint32_t efbMinX = 0, efbMinY = 0, efbMaxX = 0, efbMaxY = 0;
 bool displayWidescreen = false;
 bool upscaling = true;
+float renderScaleSetting = 0.f;
 uint32_t msaa = 1;
 
 // Every host renders for the Vita's display; other hosts scale it into their window.
@@ -131,6 +132,9 @@ float RenderScale() {
         if (const float n = std::strtof(v, nullptr); n > 0)
             return n;
 #endif
+    if (renderScaleSetting > 0.f)
+        return renderScaleSetting;
+
     return upscaling ? 0.f : 1.f;
 }
 
@@ -442,6 +446,14 @@ bool UpscalingSetting() {
 
 void SetUpscalingSetting(bool enabled) {
     upscaling = enabled;
+}
+
+float RenderScaleSetting() {
+    return renderScaleSetting;
+}
+
+void SetRenderScaleSetting(float scale) {
+    renderScaleSetting = scale > 0.f && scale <= 4.f ? scale : 0.f;
 }
 
 uint32_t MsaaSetting() {

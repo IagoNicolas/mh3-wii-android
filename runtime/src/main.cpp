@@ -30,8 +30,16 @@
 #else
 #include "vita_launcher.h"
 #include "launcher_screen.h"
-#ifndef __EMSCRIPTEN__
-#include <execinfo.h>
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+#include <execinfo.h> // bionic only has it from API 33
+#endif
+#ifdef __ANDROID__
+#include <SDL3/SDL_system.h>
+#include "android_settings.h"
+#include <android/log.h>
+#include <unistd.h>
+// Renames main to SDL_main, which SDLActivity calls from libmain.so.
+#include <SDL3/SDL_main.h>
 #endif
 #endif
 #include <iostream>
@@ -66,7 +74,7 @@ void SystemBridge::DumpCpuState(const CpuContext* cpu) {
 }
 
 void DumpHostStackTraceForRuntimeHelper() {
-#if !defined(__vita__) && !defined(__EMSCRIPTEN__) && !defined(MH3_NO_UNWIND_TABLES)
+#if !defined(__vita__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(MH3_NO_UNWIND_TABLES)
     void* frames[40];
     int count = backtrace(frames, 40);
     backtrace_symbols_fd(frames, count, 2);
@@ -168,7 +176,14 @@ void PrepareGameData(const char* rom) {
         return;
     }
 
+#ifdef __ANDROID__
+    // The app's external files directory; MainActivity copies the image
+    // there. /proc/self/exe is the zygote's app_process, not ours.
+    const char* external = SDL_GetAndroidExternalStoragePath();
+    const auto data = std::filesystem::path(external ? external : ".") / "disc";
+#else
     const auto data = std::filesystem::read_symlink("/proc/self/exe").parent_path() / "disc";
+#endif
 
     if (rom || !VitaLauncher::DiscReady(data)) {
         if (!rom)
@@ -378,6 +393,42 @@ int main(int argc, char** argv) {
     InstallLegacyGxPanicHandler();
 #ifdef __vita__
     InitializeVitaPlatform(argc, argv);
+#endif
+#ifdef __ANDROID__
+    // An app's stdout and stderr go nowhere; the runtime reports through
+    // them, so forward every line to logcat (tag MH3).
+    {
+        static int fds[2];
+
+        if (pipe(fds) == 0) {
+            dup2(fds[1], STDOUT_FILENO);
+            dup2(fds[1], STDERR_FILENO);
+            setvbuf(stdout, nullptr, _IOLBF, 0);
+            std::thread([] {
+                char buffer[4096];
+                std::string line;
+
+                for (ssize_t n; (n = read(fds[0], buffer, sizeof buffer)) > 0;)
+                    for (ssize_t i = 0; i < n; ++i) {
+                        if (buffer[i] == '\n' || line.size() >= 1000) {
+                            __android_log_write(ANDROID_LOG_INFO, "MH3", line.c_str());
+                            line.clear();
+                        }
+
+                        if (buffer[i] != '\n')
+                            line += buffer[i];
+                    }
+            }).detach();
+        }
+    }
+    __android_log_write(ANDROID_LOG_INFO, "MH3", "main started");
+    // Saves, crash logs and caches go to the app's external files directory
+    // (Android/data/<package>/files), which the user can reach over USB.
+    if (const char* external = SDL_GetAndroidExternalStoragePath()) {
+        setenv("MH3_USER_DIR", (std::string(external) + "/saves").c_str(), 0);
+        std::filesystem::create_directories(std::string(external) + "/saves");
+        LoadAndroidSettings(external);
+    }
 #endif
     // Ctrl-C ends the process at once (the default action); SDL would turn it
     // into a quit event the game only sees at its next event check.

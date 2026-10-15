@@ -119,6 +119,12 @@ MH3_EXTRA_CMAKE_ARGS='-DMH3_BUILD_VITA_TEXTURE_PACKER=OFF' scripts/docker-build.
 Like the Vita's, Linux builds are release builds unless `-DMH3_DEVELOPMENT=ON`
 is added.
 
+Android, arm64 (native libraries build; APK and device untested; needs an NDK, see [docs/android.md](docs/android.md)):
+
+```sh
+scripts/build-android.sh
+```
+
 Web: `scripts/build-web.sh`, then `scripts/serve-web.py build/web`
 ([web build](docs/web-build.md)).
 

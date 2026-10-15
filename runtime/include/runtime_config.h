@@ -230,6 +230,9 @@ inline std::optional<std::filesystem::path> ExecutableDirectory() {
     }
 #elif defined(__APPLE__)
     return RuntimePlatform::ExecutableDirectory();
+#elif defined(__ANDROID__)
+    // /proc/self/exe is app_process, not the app: there is no portable root.
+    return std::nullopt;
 #else
     // /proc/self/exe is a Linux-specific magic symlink to the running executable; readlink()
     // does not NUL-terminate and silently truncates if the buffer is too small, so this grows

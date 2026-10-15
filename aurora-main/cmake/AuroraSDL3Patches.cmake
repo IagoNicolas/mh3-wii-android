@@ -123,6 +123,52 @@ static void UpdateDeviceIdentity(SDL_HIDAPI_Device *device)
 
     now = SDL_GetTicks();
 ]==])
+
+  # Android: aurora::window::SurfaceLock takes SDLActivity's mutex while the
+  # render thread touches the surface. libSDL3.so exports only what its version
+  # script lists, so add the two functions at the script's extension point.
+  set(_dynapi_sym "${sdl_source_dir}/src/dynapi/SDL_dynapi.sym")
+
+  if (EXISTS "${_dynapi_sym}")
+    _aurora_sdl3_replace("${_dynapi_sym}" "Android activity mutex export"
+[==[    # extra symbols go here (don't modify this line)]==]
+[==[    Android_LockActivityMutex;
+    Android_UnlockActivityMutex;
+    # extra symbols go here (don't modify this line)]==])
+  endif ()
+
+  # Android: tell Aurora when the Java surface can be drawn to. Aurora keeps
+  # g_surfaceReady false on Android until
+  # SDLSurface.auroraNativeSetSurfaceReady (aurora-main/lib/window.cpp) says
+  # otherwise; stock SDL never calls it, so nothing would ever be presented.
+  set(_surface "${sdl_source_dir}/android-project/app/src/main/java/org/libsdl/app/SDLSurface.java")
+
+  if (EXISTS "${_surface}")
+    _aurora_sdl3_replace("${_surface}" "Android surface-ready JNI (declaration)"
+[==[    protected boolean mIsSurfaceReady;]==]
+[==[    protected boolean mIsSurfaceReady;
+
+    /* Implemented by Aurora (libmain.so). */
+    public static native void auroraNativeSetSurfaceReady(boolean ready);]==])
+    _aurora_sdl3_replace("${_surface}" "Android surface-ready JNI (destroyed)"
+[==[        mIsSurfaceReady = false;
+        SDLActivity.onNativeSurfaceDestroyed();]==]
+[==[        mIsSurfaceReady = false;
+        auroraNativeSetSurfaceReady(false);
+        SDLActivity.onNativeSurfaceDestroyed();]==])
+    _aurora_sdl3_replace("${_surface}" "Android surface-ready JNI (skipped)"
+[==[           mIsSurfaceReady = false;
+           return;]==]
+[==[           mIsSurfaceReady = false;
+           auroraNativeSetSurfaceReady(false);
+           return;]==])
+    _aurora_sdl3_replace("${_surface}" "Android surface-ready JNI (ready)"
+[==[        /* Surface is ready */
+        mIsSurfaceReady = true;]==]
+[==[        /* Surface is ready */
+        mIsSurfaceReady = true;
+        auroraNativeSetSurfaceReady(true);]==])
+  endif ()
 endfunction()
 
 # Script mode (FetchContent PATCH_COMMAND).

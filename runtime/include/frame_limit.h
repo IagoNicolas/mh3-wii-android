@@ -10,3 +10,11 @@
 // thread start applies it.
 bool FrameLimitSetting();
 void SetFrameLimitSetting(bool limit);
+
+// A cap on the game thread's frame rate in Hz, 0 for none (the default): the
+// limit above follows the rate the display shows frames at, and a GL swap
+// interval of 0 (a 120 Hz phone, a host without VSync) lets that rate, the
+// work and the heat run up to what the GPU manages. Loading screens are not
+// capped.
+uint32_t FpsLimitSetting();
+void SetFpsLimitSetting(uint32_t hertz);

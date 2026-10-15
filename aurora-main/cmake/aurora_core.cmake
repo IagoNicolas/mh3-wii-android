@@ -82,5 +82,12 @@ if (AURORA_ENABLE_GX)
       target_sources(aurora_core PRIVATE lib/gl/gl.cpp)
       target_include_directories(aurora_core PUBLIC ${AURORA_GLES3_INCLUDE_DIR})
       target_link_libraries(aurora_core PUBLIC ${AURORA_GLESV2_LIBRARY})
+
+      if(ANDROID)
+        # The OpenGL ES 3.0 entry points (glBindSampler, glFenceSync, ...) are
+        # exported by libGLESv3, not libGLESv2, on Android.
+        find_library(AURORA_GLESV3_LIBRARY NAMES GLESv3 REQUIRED)
+        target_link_libraries(aurora_core PUBLIC ${AURORA_GLESV3_LIBRARY})
+      endif()
     endif()
 endif ()
