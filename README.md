@@ -1,10 +1,17 @@
-# Monster Hunter Tri for the PS Vita
+# Monster Hunter Tri: PS Vita, Android and Linux ports
 
 A static recompilation of Monster Hunter Tri (Wii) to native ARM code. The
 game's PowerPC code is translated to C++ and linked with a native runtime
 that replaces the Wii's hardware and system software: there is no emulator,
 interpreter or JIT. Rendering goes through native GXM on the PS Vita and
-OpenGL ES 3.0 on Linux; a WebAssembly build draws through WebGPU.
+OpenGL ES 3.0 on Android and Linux; a WebAssembly build draws through WebGPU.
+
+| Target | Status | Build | Docs |
+| --- | --- | --- | --- |
+| PS Vita | main target | `scripts/build-vita.sh` | [launcher](docs/vita-launcher.md), [controls](docs/vita-controls.md) |
+| Android (arm64) | runs on an AYN Thor; gamepad only | `scripts/build-android.sh` | [Android](docs/android.md) |
+| Linux (arm64, arm32) | development host, Raspberry Pi class boards | `scripts/build-aurora.sh` | [flags](docs/flags.md) |
+| Web | WebGPU | `scripts/build-web.sh` | [web build](docs/web-build.md) |
 
 The repository contains no game code or data. You need your own copy of the
 **European** disc (`RMHP08`, "Monster Hunter Tri (Europe) (En,Fr,De,Es,It)")
@@ -51,18 +58,41 @@ The VPK holds the translated code and nothing of the disc: the game's
 executable sections (`sys/main.dol`, checked by hash), textures, models,
 sound and movies are read from your image.
 
+## Installing on Android
+
+1. Install the APK (`android/app/build/outputs/apk/debug/app-debug.apk`, built
+   as described under [Building](#3-build-for-android)): `adb install -r app-debug.apk`.
+2. Open the app, press **Choose disc image** and pick your ISO or RVZ with the
+   system file picker. The app copies it into its own storage (it needs about
+   as much free space as the image; the game reads the image by path, which a
+   picker result cannot give it), then press **Play**.
+3. **Settings** has the frame rate limit (30 to unlimited, 60 by default),
+   resolution (448p to 2x), MSAA and widescreen; they apply the next time the
+   game starts. A lower limit and resolution keep the device cooler.
+
+Needs Android 10 (API 29) or newer, a 64-bit ARM device and OpenGL ES 3.0. Input
+is a Bluetooth/USB gamepad or the handheld's own controls; there is no touch
+overlay. Online play is unavailable (no TLS library in the NDK). Saves, the
+converted-asset cache and `settings.txt` are in
+`Android/data/com.mh3.wii/files/`. Details and caveats: [docs/android.md](docs/android.md).
+
 ## Building
 
-Tested on arm64 Linux. You need:
+Tested on arm64 Linux (the Android build also on x86_64 Linux). You need,
+for every target:
 
-- Python 3, CMake 3.25+, Ninja, Git and Docker;
+- Python 3, CMake 3.25+, Ninja and Git (Docker for the Vita and arm32 builds);
 - **clang-21** with lld-21 and llvm-21 (`clang-21`, `clang++-21`,
   `llvm-ar-21` on `PATH`; the Vita build compiles with them as well, not with
-  VitaSDK's gcc);
+  VitaSDK's gcc; the Android build uses the NDK's Clang instead);
 - the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) for the
   translator, in `tools/dotnet/` or named by `DOTNET_BIN`;
 - [nodtool](https://github.com/encounter/nod/releases) to extract the disc
   for the translator;
+- for Android: an **NDK r28 or newer** (r29 and later ship Clang 21; install it
+  with Android Studio's SDK Manager) and the Android SDK (`ANDROID_HOME`), plus
+  **JDK 17 or 21** for Gradle (`JAVA_HOME`; Gradle 8.13 cannot read Java 25, which
+  Android Studio bundles);
 - for the Vita: [VitaSDK](https://vitasdk.org) (`VITASDK`, default
   `/usr/local/vitasdk`) and **a copy of Sony's `psp2cgc.exe`** shader
   compiler from the official PS Vita SDK's host tools, which cannot be
@@ -89,7 +119,7 @@ scripts/translate.sh            # writes generated/ (a few minutes)
 after changing `symbols.txt`, `recomp.yml`, `runtime/src/tick_sites.inc` or
 adding or removing a native function registration (`REGISTER_NATIVE_FUNCTION_AS`).
 
-### 2. Build
+### 2. Build for the Vita, Linux and web
 
 PS Vita (`build/vita/mh3-vita.vpk`):
 
@@ -119,14 +149,26 @@ MH3_EXTRA_CMAKE_ARGS='-DMH3_BUILD_VITA_TEXTURE_PACKER=OFF' scripts/docker-build.
 Like the Vita's, Linux builds are release builds unless `-DMH3_DEVELOPMENT=ON`
 is added.
 
-Android, arm64 (native libraries build; APK and device untested; needs an NDK, see [docs/android.md](docs/android.md)):
-
-```sh
-scripts/build-android.sh
-```
-
 Web: `scripts/build-web.sh`, then `scripts/serve-web.py build/web`
 ([web build](docs/web-build.md)).
+
+### 3. Build for Android
+
+arm64-v8a only. CMake re-runs native dispatch preparation on every configure and
+looks for dotnet in `tools/dotnet/`, so export `DOTNET_BIN` when it lives elsewhere:
+
+```sh
+export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/<version>   # default: the newest under ANDROID_HOME/ndk
+export ANDROID_HOME=$HOME/Android/Sdk JAVA_HOME=/path/to/jdk-21
+export DOTNET_BIN=/path/to/dotnet
+scripts/build-android.sh                          # native libraries, then the APK
+MH3_ANDROID_SKIP_APK=1 scripts/build-android.sh   # native libraries only
+```
+
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk` (debug-signed).
+`android/` is a Gradle project (wrapper `android/gradlew`, Gradle 8.13) that
+Android Studio can open as well. Like the others, it is a release build unless
+`MH3_EXTRA_CMAKE_ARGS=-DMH3_DEVELOPMENT=ON` is set.
 
 ## Running on Linux
 

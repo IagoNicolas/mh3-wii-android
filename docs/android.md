@@ -1,8 +1,8 @@
 # Android build (arm64-v8a)
 
-**Status:** the native libraries (`libmain.so`, `libSDL3.so`) cross-compile and
-link with NDK 30 (Clang 21). The Gradle app, the APK, and running on a device
-are **untested**: the Gradle app and APK build (`app-debug.apk`, 57 MB), but nothing has run on a device.
+**Status:** builds with NDK 30 (Clang 21) and runs on an AYN Thor
+(Snapdragon 8 Gen 2, Adreno 740) with its built-in controls. Other devices,
+older Android versions and emulators are untested.
 
 The game runs as it does on arm64 Linux: translated code, the same runtime,
 Aurora's OpenGL ES 3.0 renderer through SDL3. Android differences:
@@ -16,8 +16,13 @@ Aurora's OpenGL ES 3.0 renderer through SDL3. Android differences:
   give it; plan for the image's size in free space). `GameActivity` starts the game with
   `--rom <copy>`. The disc metadata, converted-asset cache and saves live beside it
   (`disc/`, `saves/`), where USB file transfer can reach them.
+- The Java side patches SDL's `SDLSurface.java` to call Aurora's
+  `auroraNativeSetSurfaceReady`; without it Aurora never presents a frame (black
+  screen). `GameActivity` hides the system bars (immersive mode).
 - Input is SDL gamepads only (Bluetooth/USB controllers); there is no touch overlay.
 - No OpenSSL in the NDK, so online play's TLS is unavailable.
+- stdout and stderr go to logcat under the tag `MH3`
+  (`adb logcat -s MH3 SDL AndroidRuntime DEBUG`).
 - `libGLESv3` is linked (aurora_core.cmake), and the vendored SDL is patched to
   export `Android_(Un)LockActivityMutex`, which Aurora's `SurfaceLock` calls
   (`aurora-main/cmake/AuroraSDL3Patches.cmake`).
